@@ -1,8 +1,8 @@
 <?php
 
 /**
-*    APC Switched Rack PDU PHP SNMPv3 Control Panel
-*    Version 1.0
+*    APC Switched Rack PDU Control Panel
+*    Version 1.1
 *
 *    A PHP based Control panel to control multiple APC Switched Rack PDUs via SNMPv3. A single panel to switch (on, off, restart) the attached devices between different states.
 *
@@ -44,7 +44,7 @@ $apcPDUs['001']['authenticationPassphrase']    = '';                    // Admin
 $apcPDUs['001']['authenticationProtocol']      = 'MD5';                 // Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Authentication Protocol
 $apcPDUs['001']['privacyPassphrase']           = '';                    // Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Privacy Passphrase | NOTE: The password must be 15-32 ASCII characters long. ⚠️ Special characters not allowed.
 $apcPDUs['001']['privacyProtocol']             = 'DES';                 // Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Privacy Protocol
-$apcPDUs['001']['securityLevel']               = 'noAuthNoPriv';        // Set desired security level: noAuthNoPriv | authNoPriv | authPriv | More detail: https://www.php.net/manual/en/function.snmp3-get.php
+$apcPDUs['001']['securityLevel']               = 'authPriv';            // Set desired security level: noAuthNoPriv | authNoPriv | authPriv | More detail: https://www.php.net/manual/en/function.snmp3-get.php
 
 
 $apcPDUs['002']['active']                      = false;                 // Set to "false", if you don't own or want to monitor more than one APC PDU
@@ -56,6 +56,7 @@ $apcPDUs['002']['privacyPassphrase']           = '';                    // Admin
 $apcPDUs['002']['privacyProtocol']             = 'DES';                 // Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Privacy Protocol
 $apcPDUs['002']['securityLevel']               = 'noAuthNoPriv';        // Set desired security level: noAuthNoPriv | authNoPriv | authPriv | More detail: https://www.php.net/manual/en/function.snmp3-get.php
 
+####################################################
 ### No further editing is needed below this line ###
 ####################################################
 
@@ -78,29 +79,12 @@ $rPDUOutletStatusOutletName     = '1.3.6.1.4.1.318.1.1.12.3.5.1.1.2';
 $rPDUOutletStatusOutletState    = '1.3.6.1.4.1.318.1.1.12.3.5.1.1.4';
 
 
-if (isset($_POST["PORT"])) {
-  $port = $_POST["PORT"];
+if (isset($_REQUEST["PORT"])) {
+  $port = $_REQUEST["PORT"];
 }
 
-if (isset($_POST["IP"])) {
-  $ip = $_POST["IP"];
-}
-
-if (isset($_POST["STATE"])) {
-  switch (strtoupper($_POST["STATE"])) {
-    case 'ON':
-        // If submitted state is ON (1), change to OFF (2)
-        $state = 2;
-        break;
-    case 'OFF':
-        // If submitted state is OFF (2), change to ON (1)
-        $state = 1;
-        break;
-    case 'REBOOT':
-        // If submitted state is REBOOT (3), perform reboot
-        $state = 3;
-        break;
-  }
+if (isset($_REQUEST["IP"])) {
+  $ip = $_REQUEST["IP"];
 }
 
 ################################################
@@ -112,25 +96,68 @@ if (isset($_POST["STATE"])) {
 $anytrue = false;
 $alltrue = true;
 
-function errorMsg($errorType) {
+function errorMsg($errorType, $erroMsgString, $affectedPDU) {
 
-  $errorMsg['en']['connection']['head']       = 'Connection error';
-  $errorMsg['en']['connection']['body']       = '<p>A connection error with the PDU under the IP address <b>'.$apcPDU['ipAddress'].'</b> has occurred. Possible reasons:</p>
-                                                  <ul>
-                                                    <li>Device is unreachable</li>
+  switch ($erroMsgString) {
+    case 'Timeout':
+        $errorMsg['en']['connection']['head']       = $erroMsgString;
+        $errorMsg['en']['connection']['body']       = '<p>A <b>'.strtolower($erroMsgString).'</b> has occurred on the PDU with the IP address <b>'.$affectedPDU.'</b>. Possible reasons:</p>
                                                       <ul>
+                                                        <li>Device is unreachable</li>
+                                                          <ul>
+                                                            <li>Device is busy</li>
+                                                            <li>Device is offline</li>
+                                                            <li>Device is in an different (V)LAN</li>
+                                                            <li>IP address has been changed</li>
+                                                            <li>Security settings prevent connection</li>
+                                                            <li>and more...</li>
+                                                          </ul>
+                                                      </ul>';
+        $errorMsg['en']['connection']['footer']     = 'Please consult <a href="https://github.com/disisto/apc-switched-rack-pdu-control-panel" title="GitHub" target="_blank" rel="noopener noreferrer nofollow" class="text-decoration-none">README.md</a> for more informations.';
+        break;
+
+    case 'Unknown user name':
+        $errorMsg['en']['connection']['head']       = $erroMsgString;
+        $errorMsg['en']['connection']['body']       = '<p>An <b>'.strtolower($erroMsgString).'</b> was used to log into the PDU with the IP address <b>'.$affectedPDU.'</b>. Possible reasons:</p>
+                                                        <ul>
+                                                          <li>User Name do not match</li>
+                                                          <li>User Name contains illegal characters</li>
+                                                          <li>SNMP User on PDU has not been enabled</li>
+                                                          <li>Wrong IP address for "NMS IP / Host Name" setting stored on PDU</li>
+                                                          <ul><li>Try '.$_SERVER['SERVER_ADDR'].' if you have not tried yet</i></li></ul>
+                                                        </ul>';
+        $errorMsg['en']['connection']['footer']     = 'Please consult <a href="https://github.com/disisto/apc-switched-rack-pdu-control-panel#3-setup-snmpv3-user-profile" title="GitHub" target="_blank" rel="noopener noreferrer nofollow" class="text-decoration-none">README.md</a> for more informations.';
+        break;
+
+    case 'No securityName specified':
+        $errorMsg['en']['connection']['head']       = 'No user name specified';
+        $errorMsg['en']['connection']['body']       = '<p><b>No user name</b> has been <b>specified</b> for the PDU with the IP address <b>'.$affectedPDU.'</b>.';
+        $errorMsg['en']['connection']['footer']     = 'Please consult <a href="https://github.com/disisto/apc-switched-rack-pdu-control-panel#2-add-access-data" title="GitHub" target="_blank" rel="noopener noreferrer nofollow" class="text-decoration-none">README.md</a> for more informations.';
+        break;
+
+    case 'Decryption error':
+        $errorMsg['en']['connection']['head']       = $erroMsgString;
+        $errorMsg['en']['connection']['body']       = '<p>A <b>'.strtolower($erroMsgString).'</b> has occurred on the PDU with the IP address <b>'.$affectedPDU.'</b>. Possible reasons:</p>
+                                                      <ul>
+                                                        <li>Authentication Passphrase do not match or is missing</li>
+                                                        <li>Authentication Passphrase contains illegal characters</li>
+                                                        <li>Authentication Protocol settings do not match or is missing</li>
+                                                        <li>Privacy Passphrase do not match or is missing</li>
+                                                        <li>Privacy Passphrase contains illegal characters</li>
+                                                        <li>Privacy Protocol settings do not match or is missing</li>
                                                         <li>Device is busy</li>
-                                                        <li>Device is offline</li>
-                                                        <li>Device is in an different (V)LAN</li>
-                                                        <li>IP address has been changed</li>
-                                                        <li>Security settings prevent connection</li>
-                                                      </ul>
-                                                    <li>Access data do not match (user name, passphrases, protocol)</li>
-                                                  </ul>';
-  $errorMsg['en']['connection']['footer']     = 'Please consult <a href="https://github.com/disisto/apc-switched-rack-pdu-php-snmp-v3-control-panel" title="GitHub" target="_blank" rel="noopener noreferrer nofollow" class="text-decoration-none">'.explode('/', $_SERVER['SERVER_SOFTWARE'])[0].' error log</a> for more informations.';
-  
+                                                      </ul>';
+        $errorMsg['en']['connection']['footer']     = 'Please consult <a href="https://github.com/disisto/apc-switched-rack-pdu-control-panel" title="GitHub" target="_blank" rel="noopener noreferrer nofollow" class="text-decoration-none">README.md</a> for more informations.';
+        break;
+
+    default:
+        $errorMsg['en']['connection']['head']       = 'Connection error';
+        $errorMsg['en']['connection']['body']       = '<p>A connection error with the error message "<b>'.$erroMsgString.'</b>" has occurred on the PDU with the IP address <b>'.$affectedPDU.'</b>.</p>';
+        $errorMsg['en']['connection']['footer']     = 'Please consult <a href="https://github.com/disisto/apc-switched-rack-pdu-control-panel#troubleshooting" title="GitHub" target="_blank" rel="noopener noreferrer nofollow" class="text-decoration-none">'.explode('/', $_SERVER['SERVER_SOFTWARE'])[0].' error log</a> for more informations.';
+  }
+
   $errorMsg['en']['invalidIP']['head']        = 'Invalid IP address';
-  $errorMsg['en']['invalidIP']['body']        = '<p>Invalid IP address detected. Check entries on line 41, 51, etc.</p>';
+  $errorMsg['en']['invalidIP']['body']        = '<p>Invalid IP address (<b>"'.$affectedPDU.'"</b>) detected. Check entries on line 41, 51, etc.</p>';
   $errorMsg['en']['invalidIP']['footer']      = 'Set a valid IP address to establish a connection.';
   
   $errorMsg['en']['configuration']['head']    = 'Configuration error';
@@ -155,8 +182,25 @@ function errorMsg($errorType) {
     </p>
   </div>
   ';
+
 }
 
+################################################
+############### Stylesheet mgmt ################
+################################################
+
+function stylesheetSource() {
+
+  $file  = 'assets/vendor/bootstrap/5.1.3/css/bootstrap.min.css';
+  $local = '<link rel="stylesheet" href="'.$file.'">';
+  $cloud = '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">';
+
+  if (file_exists($file)) {
+      echo $local;
+  } else {
+      echo $cloud;
+  }
+}
 ?>
 
 
@@ -169,7 +213,7 @@ function errorMsg($errorType) {
     <meta name="author" content="https://github.com/disisto">
     <title>APC | Switched Rack PDU</title>
 
-   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
+   <?= stylesheetSource() ?>
 
    <style>
       .outlet-labels {
@@ -191,7 +235,6 @@ function errorMsg($errorType) {
       }
 
       .round-btn {
-        display:inline-block;
         height: 2.4rem;
         width: 2.4rem;
         border-radius: 50%;
@@ -258,8 +301,28 @@ foreach ($apcPDUs as $key => $apcPDU) {
   #################################################
   ##### FORM SUBMITTED -> FIRE COMMAND TO PDU #####
   #################################################
-  if (isset($_POST["IP"]) && isset($_POST["PORT"]) && isset($_POST["STATE"])) {
+  if (isset($_REQUEST["IP"]) && isset($_REQUEST["PORT"])) {
     if ($apcPDU['ipAddress'] == $ip) {
+      // Get state of the affected APC PDU power outlet
+      $queryOutletState = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletStatusOutletState . '.' . $port);
+
+      if (!isset($_REQUEST["REBOOT"])) {
+        if (implode('', $queryOutletState) == 'INTEGER: 1') {
+          // If submitted state is ON (1), change to OFF (2)
+          $state = 2;
+        }
+  
+        if (implode('', $queryOutletState) == 'INTEGER: 2') {
+          // If submitted state is OFF (2), change to ON (1)
+          $state = 1;
+        }
+        
+      }
+      else {
+        // REBOOT has been requested
+        $state = 3;
+      }
+
       snmp3_set($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletControlOutletCommand . $port, 'i', $state);
     }
   }
@@ -278,13 +341,24 @@ foreach ($apcPDUs as $key => $apcPDU) {
       $apcPduName = $n[1];   
     }
 
+    // Check if we are getting an error
     if (is_null($queryApcPduName) || $queryApcPduName == false) {
 
+      // Fetch to which PDU IP the error belong to
+      $affectedPDU = $apcPDU['ipAddress'];
+
+      // Check if we are trying to communicate to valid IP
       if (filter_var($apcPDU['ipAddress'], FILTER_VALIDATE_IP)) {
-        errorMsg("connection");
+
+        // Fetch last SNMP error message in regards of connection issues
+        $session = new SNMP(SNMP::VERSION_3, $apcPDU['ipAddress'], $apcPDU['userProfile']);
+        $errorFromLastSnmpRequest = $session->get($rPDUIdentName);
+        $erroMsgString = substr($session->getError(), strpos($session->getError(), ":") + 2);
+
+        errorMsg('connection', $erroMsgString, $affectedPDU);
       } 
       else {
-        errorMsg("invalidIP");
+        errorMsg('invalidIP', $erroMsgString, $affectedPDU);
       }
     }
     // Continue if we are able to get the PDU Name
@@ -302,22 +376,20 @@ foreach ($apcPDUs as $key => $apcPDU) {
             return array_combine(['port', 'name', 'state'], $item);
           }, array_map(null, $queryIndex, $queryName, $queryState));
           
-
-      
-            foreach ($combinedArray as $key => $value) {
-              if (preg_match('/"([^"]+)"/', $value['name'], $n)) {
-                $name = $n[1];   
-              }
-              $status = ((substr($value['state'], -1, 1) == 1) ? 'ON' : ((substr($value['state'], -1, 1) == 2) ? 'OFF' : 'UNKNOWN' ));
-              $index = (substr($value['port'], -1));
-                $results[] = [
-                  "PDU Name" => $apcPduName,
-                  "IP Address" => $apcPDU['ipAddress'],
-                  "Port" => $index,
-                  "Name" => $name,
-                  "Status" => $status,
-                ];
+          foreach ($combinedArray as $key => $value) {
+            if (preg_match('/"([^"]+)"/', $value['name'], $n)) {
+              $name = $n[1];   
             }
+            $status = ((substr($value['state'], -1, 1) == 1) ? 'ON' : ((substr($value['state'], -1, 1) == 2) ? 'OFF' : 'UNKNOWN' ));
+            $index = (substr($value['port'], -1));
+              $results[] = [
+                "PDU Name"    => $apcPduName,
+                "IP Address"  => $apcPDU['ipAddress'],
+                "Port"        => $index,
+                "Name"        => $name,
+                "Status"      => $status,
+              ];
+          }
 
       echo'
             <div class="container px-4 pt-3 border rounded bg-light" id="icon-grid">
@@ -325,54 +397,50 @@ foreach ($apcPDUs as $key => $apcPDU) {
                 <h2 class="pb-2 border-bottom">'.$apcPduName.'</h2>
               </a>
 
-              <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4 pt-5 pb-3">
+              <div class="row g-4 py-5 row-cols-1 row-cols-md-2 row-cols-lg-4 pb-3">
       ';
-
-
 
       foreach ($results as $result) {
         if ($result['PDU Name'] == $apcPduName) {
           echo'
-                <div class="col d-flex align-items-start">
+                  <div class="col d-flex align-items-start">
                   <svg xmlns="http://www.w3.org/2000/svg" width="1.75em" height="1.75em" fill="currentColor" class="bi bi-outlet text-dark flex-shrink-0 me-3" viewBox="0 0 16 16">
                     <path d="M3.34 2.994c.275-.338.68-.494 1.074-.494h7.172c.393 0 .798.156 1.074.494.578.708 1.84 2.534 1.84 5.006 0 2.472-1.262 4.297-1.84 5.006-.276.338-.68.494-1.074.494H4.414c-.394 0-.799-.156-1.074-.494C2.762 12.297 1.5 10.472 1.5 8c0-2.472 1.262-4.297 1.84-5.006zm1.074.506a.376.376 0 0 0-.299.126C3.599 4.259 2.5 5.863 2.5 8c0 2.137 1.099 3.74 1.615 4.374.06.073.163.126.3.126h7.17c.137 0 .24-.053.3-.126.516-.633 1.615-2.237 1.615-4.374 0-2.137-1.099-3.74-1.615-4.374a.376.376 0 0 0-.3-.126h-7.17z"/>
                     <path d="M6 5.5a.5.5 0 0 1 .5.5v1.5a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm4 0a.5.5 0 0 1 .5.5v1.5a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zM7 10v1h2v-1a1 1 0 0 0-2 0z"/>
                   </svg>
                   <div>
                     <h4 class="fw-bold mb-0 outlet-labels">'.$result['Name'].'</h4>
-                    <div class="container">
-                      <div class="row">
-                        <div class="col-2"></div>
-                        <div class="col-4">
-                          <form action="." method="post">
-                            <div class="form-check form-switch form-switch-xl">
-                              <input class="form-check-input" type="checkbox" id="STATE" name="STATE" value="'.$result['Status'].'" onChange="this.form.submit()"'.(($result['Status'] == "ON") ? ' checked' : '').'>
-                              <input type="hidden" name="STATE" value="'.$result['Status'].'">
-                              <input type="hidden" name="PORT" value="'.$result['Port'].'">
-                              <input type="hidden" name="IP" value="'.$result['IP Address'].'">
-                            </div>
-                          </form>
-                        </div>
-                        <div class="col-4">
-                          '.(($result['Status'] == "ON") ? '
-                          <form action="." method="post">
-                            <div class="form-check pt-1">
-                              <button type="submit" class="btn btn-outline-secondary round-btn" name="STATE" value="REBOOT">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="2.75em" height="1.75em" fill="currentColor" class="bi bi-arrow-clockwise reboot" viewBox="0 0 16 16">
-                                  <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
-                                  <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
-                                </svg>
-                              </button>
-                              <input type="hidden" name="PORT" value="'.$result['Port'].'">
-                              <input type="hidden" name="IP" value="'.$result['IP Address'].'">
-                            </div>
-                          </form>
-                          ' : '').'
-                        </div>
-                        <div class="col-2"></div>
+
+                  <div class="container">
+                    <div class="row">
+                      <div class="col">
+                        <form action="." method="post">
+                          <div class="form-check form-switch form-switch-xl">
+                            <input class="form-check-input" type="checkbox" id="STATE" name="STATE" value="'.$result['Status'].'" onChange="this.form.submit()"'.(($result['Status'] == "ON") ? ' checked' : '').'>
+                            <input type="hidden" name="STATE" value="'.$result['Status'].'">
+                            <input type="hidden" name="PORT" value="'.$result['Port'].'">
+                            <input type="hidden" name="IP" value="'.$result['IP Address'].'">
+                          </div>
+                        </form>
+                      </div>
+                      <div class="col">
+                        '.(($result['Status'] == "ON") ? '
+                        <form action="." method="post">
+                          <div class="form-check pt-1 ps-1">
+                            <button type="submit" class="btn btn-outline-secondary round-btn" name="STATE" value="REBOOT">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="2.75em" height="1.75em" fill="currentColor" class="bi bi-arrow-clockwise reboot" viewBox="0 0 16 16">
+                            <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                          </svg>
+                            </button>
+                            <input type="hidden" name="PORT" value="'.$result['Port'].'">
+                            <input type="hidden" name="IP" value="'.$result['IP Address'].'">
+                          </div>
+                        </form>
+                        ' : '').'
                       </div>
                     </div>
-
+                  </div>
 
                   </div>
                 </div>
@@ -398,7 +466,7 @@ if ($alltrue) {
 elseif (!$anytrue) {
   // All elements are false
   # echo 'All elements are false';
-  errorMsg("configuration");
+  errorMsg('configuration', $erroMsgString, $affectedPDU);
 }
 else {
   // All elements are true
@@ -411,12 +479,12 @@ else {
   </main>
   <footer class="pt-2 my-1 text-muted border-top">
     &copy; <?= ((date("Y") == 2021) ? date("Y") . ' ' : '2021-' . date("Y") . ' ') ?>
-    <a href="https://github.com/disisto/apc-switched-rack-pdu-php-snmp-v3-control-panel" title="GitHub" target="_blank" rel="noopener noreferrer nofollow" class="text-muted text-decoration-none"> 
+    <a href="https://github.com/disisto/apc-switched-rack-pdu-control-panel" title="GitHub" target="_blank" rel="noopener noreferrer nofollow" class="text-muted text-decoration-none"> 
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-github" viewBox="0 0 16 16">
         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
       </svg>
     </a>
-    | APC Switched Rack PDU PHP SNMPv3 Control Panel
+    | APC Switched Rack PDU Control Panel
   </footer>
 </div>
 
