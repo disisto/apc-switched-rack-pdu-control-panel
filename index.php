@@ -2,7 +2,7 @@
 
 /**
 *    APC Switched Rack PDU Control Panel
-*    Version 1.1
+*    Version 1.1.1
 *
 *    A PHP based Control panel to control multiple APC Switched Rack PDUs via SNMPv3. A single panel to switch (on, off, restart) the attached devices between different states.
 *
@@ -78,14 +78,41 @@ $rPDUOutletStatusOutletName     = '1.3.6.1.4.1.318.1.1.12.3.5.1.1.2';
 // rPDUOutletStatusOutletState
 $rPDUOutletStatusOutletState    = '1.3.6.1.4.1.318.1.1.12.3.5.1.1.4';
 
+#################################################
+##### FORM SUBMITTED -> FIRE COMMAND TO PDU #####
+#################################################
 
-if (isset($_REQUEST["PORT"])) {
-  $port = $_REQUEST["PORT"];
+if (isset($_REQUEST["IP"]) && isset($_REQUEST["PORT"])) {
+  foreach ($apcPDUs as $key => $apcPDU) {
+    if ($apcPDU['ipAddress'] == $_REQUEST["IP"]) {
+      // Get state of the affected APC PDU power outlet
+      $queryOutletState = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletStatusOutletState . '.' . $_REQUEST["PORT"]);
+
+      if (isset($_REQUEST["STATE"]) && ($_REQUEST["STATE"] != "REBOOT")) {
+        if (implode('', $queryOutletState) == 'INTEGER: 1') {
+          // If submitted state is ON (1), change to OFF (2)
+          $state = 2;
+        }
+
+        if (implode('', $queryOutletState) == 'INTEGER: 2') {
+          // If submitted state is OFF (2), change to ON (1)
+          $state = 1;
+        }
+        
+      }
+      else {
+        // REBOOT has been requested
+        $state = 3;
+      }
+
+      echo $state;
+      snmp3_set($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletControlOutletCommand . $_REQUEST["PORT"], 'i', $state);
+      header('Location: .');
+      exit;
+    }
+  }
 }
 
-if (isset($_REQUEST["IP"])) {
-  $ip = $_REQUEST["IP"];
-}
 
 ################################################
 ############# Error Msg Templates ##############
@@ -184,6 +211,7 @@ function errorMsg($errorType, $erroMsgString, $affectedPDU) {
   ';
 
 }
+
 
 ################################################
 ############### Stylesheet mgmt ################
@@ -291,44 +319,11 @@ function stylesheetSource() {
 
 <?php
 
-$i = 1;
 foreach ($apcPDUs as $key => $apcPDU) {
 
   // Error handling, if all PDUs are deactivated (set to false)
   $anytrue |= $apcPDU['active'];
   $alltrue &= $apcPDU['active'];
-
-  #################################################
-  ##### FORM SUBMITTED -> FIRE COMMAND TO PDU #####
-  #################################################
-  if (isset($_REQUEST["IP"]) && isset($_REQUEST["PORT"])) {
-    if ($apcPDU['ipAddress'] == $ip) {
-      // Get state of the affected APC PDU power outlet
-      $queryOutletState = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletStatusOutletState . '.' . $port);
-
-      if (!isset($_REQUEST["REBOOT"])) {
-        if (implode('', $queryOutletState) == 'INTEGER: 1') {
-          // If submitted state is ON (1), change to OFF (2)
-          $state = 2;
-        }
-  
-        if (implode('', $queryOutletState) == 'INTEGER: 2') {
-          // If submitted state is OFF (2), change to ON (1)
-          $state = 1;
-        }
-        
-      }
-      else {
-        // REBOOT has been requested
-        $state = 3;
-      }
-
-      snmp3_set($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletControlOutletCommand . $port, 'i', $state);
-    }
-  }
-  #################################################
-  #################################################
-  #################################################
 
   // Generate list based on amout of configured/activated APC PDUs
   if ($apcPDU['active'] == true) {
@@ -363,6 +358,10 @@ foreach ($apcPDUs as $key => $apcPDU) {
     }
     // Continue if we are able to get the PDU Name
     else {
+
+       if (implode('',$queryApcPduName));
+
+
           // Get port of every single APC PDU power outlet
           $queryIndex = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletStatusIndex);
           // Get name of every single APC PDU power outlet
@@ -401,7 +400,7 @@ foreach ($apcPDUs as $key => $apcPDU) {
       ';
 
       foreach ($results as $result) {
-        if ($result['PDU Name'] == $apcPduName) {
+        if ($result['IP Address'] == $apcPDU['ipAddress']) {
           echo'
                   <div class="col d-flex align-items-start">
                   <svg xmlns="http://www.w3.org/2000/svg" width="1.75em" height="1.75em" fill="currentColor" class="bi bi-outlet text-dark flex-shrink-0 me-3" viewBox="0 0 16 16">
@@ -416,7 +415,7 @@ foreach ($apcPDUs as $key => $apcPDU) {
                       <div class="col">
                         <form action="." method="post">
                           <div class="form-check form-switch form-switch-xl">
-                            <input class="form-check-input" type="checkbox" id="STATE" name="STATE" value="'.$result['Status'].'" onChange="this.form.submit()"'.(($result['Status'] == "ON") ? ' checked' : '').'>
+                            <input class="form-check-input" type="checkbox" id="STATE" name="STATE" value="'.$result['Status'].'" onChange="this.form.submit()"  '.(($result['Status'] == "ON") ? ' checked' : '').'>
                             <input type="hidden" name="STATE" value="'.$result['Status'].'">
                             <input type="hidden" name="PORT" value="'.$result['Port'].'">
                             <input type="hidden" name="IP" value="'.$result['IP Address'].'">
@@ -428,10 +427,10 @@ foreach ($apcPDUs as $key => $apcPDU) {
                         <form action="." method="post">
                           <div class="form-check pt-1 ps-1">
                             <button type="submit" class="btn btn-outline-secondary round-btn" name="STATE" value="REBOOT">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="2.75em" height="1.75em" fill="currentColor" class="bi bi-arrow-clockwise reboot" viewBox="0 0 16 16">
-                            <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
-                            <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
-                          </svg>
+                              <svg xmlns="http://www.w3.org/2000/svg" width="2.75em" height="1.75em" fill="currentColor" class="bi bi-arrow-clockwise reboot" viewBox="0 0 16 16">
+                                <path fill-rule="evenodd" d="M8 3a5 5 0 1 0 4.546 2.914.5.5 0 0 1 .908-.417A6 6 0 1 1 8 2v1z"/>
+                                <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
+                              </svg>
                             </button>
                             <input type="hidden" name="PORT" value="'.$result['Port'].'">
                             <input type="hidden" name="IP" value="'.$result['IP Address'].'">
@@ -487,14 +486,6 @@ else {
     | APC Switched Rack PDU Control Panel
   </footer>
 </div>
-
-
-  <script>
-      if (window.history.replaceState) {
-          window.history.replaceState(null, null, window.location.href);
-      }
-  </script>
-
 
   </body>
 </html>
