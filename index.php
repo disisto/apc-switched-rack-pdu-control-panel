@@ -2,7 +2,7 @@
 
 /**
 *    APC Switched Rack PDU Control Panel
-*    Version 1.1.1
+*    Version 1.2
 *
 *    A PHP based Control panel to control multiple APC Switched Rack PDUs via SNMPv3. A single panel to switch (on, off, restart) the attached devices between different states.
 *
@@ -33,9 +33,9 @@
 **/
 
 
-####  Set your personal APC PDU settings 
 
-$apcPDUs = array();
+
+####  Set your personal APC PDU settings 
 
 $apcPDUs['001']['active']                      = false;
 $apcPDUs['001']['ipAddress']                   = '';
@@ -66,6 +66,9 @@ $apcPDUs['002']['securityLevel']               = 'noAuthNoPriv';        // Set d
 // rPDUIdentName
 $rPDUIdentName                  = '1.3.6.1.4.1.318.1.1.12.1.1';
 
+// rPDUOutletDevCommand
+$rPDUOutletDevCommand           = '1.3.6.1.4.1.318.1.1.12.3.1.1.0';
+
 // rPDUOutletControlOutletCommand
 $rPDUOutletControlOutletCommand = '1.3.6.1.4.1.318.1.1.12.3.3.1.1.4.';
 
@@ -78,41 +81,90 @@ $rPDUOutletStatusOutletName     = '1.3.6.1.4.1.318.1.1.12.3.5.1.1.2';
 // rPDUOutletStatusOutletState
 $rPDUOutletStatusOutletState    = '1.3.6.1.4.1.318.1.1.12.3.5.1.1.4';
 
+
 #################################################
 ##### FORM SUBMITTED -> FIRE COMMAND TO PDU #####
 #################################################
 
-if (isset($_REQUEST["IP"]) && isset($_REQUEST["PORT"])) {
+### Toggle status (ON, OFF, REBOOT)
+
+if (isset($_REQUEST["IP"]) && isset($_REQUEST["OUTLET"])) {
   foreach ($apcPDUs as $key => $apcPDU) {
+
     if ($apcPDU['ipAddress'] == $_REQUEST["IP"]) {
-      // Get state of the affected APC PDU power outlet
-      $queryOutletState = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletStatusOutletState . '.' . $_REQUEST["PORT"]);
 
-      if (isset($_REQUEST["STATE"]) && ($_REQUEST["STATE"] != "REBOOT")) {
-        if (implode('', $queryOutletState) == 'INTEGER: 1') {
-          // If submitted state is ON (1), change to OFF (2)
-          $state = 2;
+        // Command to all outlets has been send
+        if (!is_numeric($_REQUEST["OUTLET"])) {
+            switch ($_REQUEST["STATE"]) {
+              case 'ON':
+                  snmp3_set($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletDevCommand, 'i', 2);
+                  header('Location: .');
+                  exit;
+              case 'OFF':
+                  snmp3_set($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletDevCommand, 'i', 3);
+                  header('Location: .');
+                  exit;
+              case 'REBOOT':
+                  snmp3_set($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletDevCommand, 'i', 4);
+                  header('Location: .');
+                  exit;
+            }
         }
+        // Command to a single outlets has been send
+        else {
+          // Get state of the affected APC PDU power outlet
+          $queryOutletState = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletStatusOutletState . '.' . $_REQUEST["OUTLET"]);
 
-        if (implode('', $queryOutletState) == 'INTEGER: 2') {
-          // If submitted state is OFF (2), change to ON (1)
-          $state = 1;
+          if (isset($_REQUEST["STATE"]) != "REBOOT") {
+            if (implode('', $queryOutletState) == 'INTEGER: 1') {
+              // If submitted state is ON (1), change to OFF (2)
+              $state = 2;
+            }
+
+            if (implode('', $queryOutletState) == 'INTEGER: 2') {
+              // If submitted state is OFF (2), change to ON (1)
+              $state = 1;
+            }
+            
+          }
+          else {
+            // REBOOT has been requested
+            $state = 3;
+          }
+
+          snmp3_set($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletControlOutletCommand . $_REQUEST["OUTLET"], 'i', $state);
+          header('Location: .');
+          exit;
         }
-        
-      }
-      else {
-        // REBOOT has been requested
-        $state = 3;
-      }
-
-      echo $state;
-      snmp3_set($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletControlOutletCommand . $_REQUEST["PORT"], 'i', $state);
-      header('Location: .');
-      exit;
     }
   }
 }
 
+### Rename PDU name
+
+#### Error handling: If all new PDU name contain only supported characters
+$noASCII = false;
+
+if (isset($_POST["IP"]) && isset($_POST["pduInputName"])) {
+
+  // Check if input contain any non-ASCII characters
+  if(!preg_match('/[^\x20-\x7e]/', $_POST["pduInputName"])) {
+    // 100% ASCII -> start renaming
+    $pduNewName = $_POST["pduInputName"];
+    foreach ($apcPDUs as $key => $apcPDU) {
+      if ($apcPDU['ipAddress'] == $_POST["IP"]) {
+        snmp3_set($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUIdentName . '.0', 's', $pduNewName);
+        header('Location: .');
+        exit;
+      }
+    }
+  }
+  else {
+   // Show error message as input contain non-ASCII
+    $noASCII      = true;
+    $affectedPDU  = $_POST["IP"];
+  }
+}
 
 ################################################
 ############# Error Msg Templates ##############
@@ -191,6 +243,10 @@ function errorMsg($errorType, $erroMsgString, $affectedPDU) {
   $errorMsg['en']['configuration']['body']    = '<p>All PDUs has been set to \'false\' in the PHP file, which prevent to show any results. Check entries on line 40, 50, etc.</p>';
   $errorMsg['en']['configuration']['footer']  = 'Set at least one entry to \'true\' in order to get any results.';
 
+  $errorMsg['en']['noASCII']['head']          = 'Unsupported characters';
+  $errorMsg['en']['noASCII']['body']          = '<p>Unsupported characters were used to rename the PDU. Only <a href="https://en.wikipedia.org/wiki/ASCII" title="Wikipedia" target="_blank" rel="noopener noreferrer nofollow" class="text-decoration-none">ASCII characters</a> are allowed.</p>';
+  $errorMsg['en']['noASCII']['footer']        = 'Enter a new name that contains only ASCII characters.';
+
   echo '
   <div class="alert alert-danger" role="alert">
     <h4 class="alert-heading">
@@ -229,6 +285,25 @@ function stylesheetSource() {
       echo $cloud;
   }
 }
+
+
+################################################
+################# Script mgmt ##################
+################################################
+
+function scriptSource() {
+
+  $file  = 'assets/vendor/bootstrap/5.1.3/js/bootstrap.bundle.min.js2';
+  $local = '<script src="'.$file.'"></script>';
+  $cloud = '<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p" crossorigin="anonymous"></script>';
+
+  if (file_exists($file)) {
+      echo $local;
+  } else {
+      echo $cloud;
+  }
+}
+
 ?>
 
 
@@ -247,32 +322,194 @@ function stylesheetSource() {
       .outlet-labels {
         font-size: 23px;
       }
-
       .form-check-input {
         clear: left;
       }
-
       .form-switch.form-switch-xl {
-        margin-bottom: 2rem; /* JUST FOR STYLING PURPOSE */
+        margin-bottom: 2rem;
       }
-
       .form-switch.form-switch-xl .form-check-input {
         height: 2.4rem;
         width: calc(4rem + 0.75rem);
         border-radius: 5rem;
       }
-
       .round-btn {
         height: 2.4rem;
         width: 2.4rem;
         border-radius: 50%;
         border: 1px solid;
       }
-
       .reboot { 
         margin-top: -2px; 
         margin-left: -16px; 
       }
+      .pencil {
+        width: 200px;
+        border: 1px dotted black;
+      }
+      h1 {
+        margin: 0;
+          display: inline-block;
+      }
+      button {
+        float: right;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        /* Background and general font color */
+        body {
+          background: #222222;
+          color: #B3B3B3 !important;
+        }
+        /* Logo */
+        .opacity {
+          -webkit-filter: opacity(.7);
+          filter: opacity(.7);
+        }
+        /* Header border */
+        .border-bottom {
+          border-bottom: 1px solid #3b3b3b !important;
+        }
+        /* Error Msg box */
+        .alert-danger {
+          color: #ec766a;
+          background-color: #91342b;
+          border-color: #a3392e;
+        }
+        /* PDU/Outlet box */
+        .container {
+          background-color: #3b3b3b !important;
+        }
+        /* PDU/Outlet box border */
+        .border {
+          border: 1px solid #3b3b3b !important;
+        }
+        .border-bottom-dark {
+          border-bottom: 1px solid #222222 !important;
+        }
+        h2 {
+          color: #B3B3B3 !important;
+        }
+        /* Outlet switches */
+        .form-check-input {
+          color: #3B3B3B;
+          background-color: #7E7E7E;
+          border-color: #7E7E7E;
+        }
+        .form-switch .form-check-input:checked {
+          background-color: #375A7F;
+          border-color: #375A7F;
+        }
+        .form-switch .form-check-input:focus {
+          background-color: #2F4D6C;
+          border-color: #2F4D6C;
+          box-shadow: 0 0 0 0.25rem rgba(49, 132, 253, 0.5);
+        }
+        /* Reboot button */
+        .round-btn {
+          color: #2f2f2f;
+          background-color: #626262;
+          border-color: #626262;
+        }
+        .round-btn:hover {
+          background-color: #626262;
+          border-color: #626262;
+        }
+        /* Footer border */
+        .border-top {
+          border-top:1px solid #495057 !important;
+        }
+        /* Footer text */
+        .text-muted {
+          color: #626262 !important;
+        }
+        /* Modal header <hr> */
+        .modal-header {
+          border-bottom: 1px solid #495057 !important;
+        }
+        /* Modal contnet */
+        .modal-content {
+          background-color: #2f2f2f !important;
+          color: #e1e1e1 !important;
+        }
+        /* Modal footer <hr> */
+        .modal-footer {
+          border-top: 1px solid #495057 !important;
+        }
+        /* Modal input field*/
+        .form-control, .form-control:focus, textarea#INPUTFIELD {
+          color: #B3B3B3 !important;
+          background-color: #7e7e7e;
+          border: 1px solid #7e7e7e;
+        }
+        /* Modal buttons */
+        .btn-primary {
+          color: #F2DEDC;
+          background-color: #375A7F;
+          border-color: #375A7F;
+        }
+        .btn-primary:hover {
+          color: #F2DEDC;
+          background-color: #2F4D6C;
+          border-color: #2F4D6C;
+        }
+        .btn-check:focus + .btn-primary, .btn-primary:focus {
+          color: #F2DEDC;
+          background-color: #2F4D6C;
+          border-color: #2F4D6C;
+          box-shadow: 0 0 0 0.25rem rgba(49, 132, 253, 0.5);
+        }
+        .btn-danger {
+          color: #F2DEDC;
+          background-color: #E74C3C;
+          border-color: #E74C3C;
+        }
+        .btn-danger:hover {
+          color: #F2DEDC;
+          background-color: #C44133;
+          border-color: #C44133;
+        }
+        .btn-check:focus + .btn-danger, .btn-danger:focus {
+          color: #F2DEDC;
+          background-color: #C44133;
+          border-color: #C44133;
+          box-shadow: 0 0 0 0.25rem rgba(49, 132, 253, 0.5);
+        }
+        .btn-outline-danger {
+          color: #E74C3C;
+          border-color: #E74C3C;
+        }
+        .btn-outline-danger:hover {
+          color: #F2DEDC;
+          background-color: #C44133;
+          border-color: #C44133;
+        }
+        .btn-check:focus + .btn-outline-danger, .btn-outline-danger:focus {
+          color: #F2DEDC;
+          background-color: #C44133;
+          border-color: #C44133;
+          box-shadow: 0 0 0 0.25rem rgba(49, 132, 253, 0.5);
+        }
+        /* Links */
+        a {
+          color: #5080b3;
+          text-decoration: none;
+          background-color: transparent;
+        }
+        a:hover {
+          color: #85a7ca;
+          text-decoration: underline;
+        }
+        a:not([href]):not([class]) {
+          color: inherit;
+          text-decoration: none;
+        }
+        a:not([href]):not([class]):hover {
+          color: inherit;
+          text-decoration: none;
+        }
+      }
+
 
    </style>
 
@@ -281,7 +518,7 @@ function stylesheetSource() {
 
 <div class="col-lg-8 mx-auto p-2 py-md-4">
   <header class="d-flex align-items-center pb-1 mb-3 border-bottom">
-    <a href="." class="d-flex align-items-center text-dark text-decoration-none">
+    <a href="." class="d-flex align-items-center text-dark text-decoration-none opacity">
         <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="75" height="36" viewBox="0 0 588 280.351" version="1.1">
         <g id="surface1">
           <path style=" stroke:none;fill-rule:evenodd;fill:rgb(0%,65.098572%,31.37207%);fill-opacity:1;" d="M 6.589844 259.257813 C 6.589844 262.96875 9.492188 265.554688 13.152344 265.554688 C 17.242188 265.554688 19.933594 262.433594 19.933594 257.859375 C 19.933594 253.171875 17.242188 250.113281 13.207031 250.113281 C 9.976563 250.113281 7.714844 251.773438 6.589844 254.417969 Z M 6.589844 267.488281 C 6.589844 270.234375 5.1875 271.09375 3.253906 271.09375 L 2.441406 271.09375 C 0.347656 271.09375 -1 270.289063 -1 267.488281 L -1 234.339844 C -1 234.074219 0.347656 233.480469 1.855469 233.480469 C 4.117188 233.480469 6.589844 234.671875 6.589844 239.558594 L 6.589844 248.332031 C 8.472656 245.699219 11.378906 244.027344 15.09375 244.027344 C 22.140625 244.027344 27.25 249.355469 27.25 257.75 C 27.25 265.925781 22.296875 271.582031 14.984375 271.582031 C 10.945313 271.582031 8.042969 269.585938 6.589844 267.058594 "/>
@@ -330,10 +567,13 @@ foreach ($apcPDUs as $key => $apcPDU) {
 
     // Get name of APC PDU
     $queryApcPduName = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUIdentName);
-  
-    // Clean up output for APC PDU name string
-    if (preg_match('/"([^"]+)"/', $queryApcPduName[0], $n)) {
-      $apcPduName = $n[1];   
+
+    // Check if we are getting an error while trying to rename the PDU
+    if ($noASCII == true) {
+      if ($affectedPDU == $apcPDU['ipAddress']) {
+        $erroMsgString = null;
+        errorMsg('noASCII', $erroMsgString, $affectedPDU);
+      }
     }
 
     // Check if we are getting an error
@@ -359,32 +599,37 @@ foreach ($apcPDUs as $key => $apcPDU) {
     // Continue if we are able to get the PDU Name
     else {
 
-       if (implode('',$queryApcPduName));
+      // Clean up output for APC PDU name string
+      if (preg_match('/"([^"]+)"/', $queryApcPduName[0], $n)) {
+        $apcPduName = $n[1];   
+      }
+
+      if (implode('',$queryApcPduName));
 
 
-          // Get port of every single APC PDU power outlet
+          // Get number of every single APC PDU power outlet
           $queryIndex = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletStatusIndex);
           // Get name of every single APC PDU power outlet
           $queryName  = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletStatusOutletName);
           // Get state of every single APC PDU power outlet
           $queryState = snmp3_walk($apcPDU['ipAddress'], $apcPDU['userProfile'], $apcPDU['securityLevel'], $apcPDU['authenticationProtocol'], $apcPDU['authenticationPassphrase'], $apcPDU['privacyProtocol'], $apcPDU['privacyPassphrase'], $rPDUOutletStatusOutletState);
 
-          $combinedArray = array_combine($queryName, $queryState);
+         #$combinedArray = array_combine($queryName, $queryState);
 
           $combinedArray = array_map(function($item) {
-            return array_combine(['port', 'name', 'state'], $item);
+            return array_combine(['outlet', 'name', 'state'], $item);
           }, array_map(null, $queryIndex, $queryName, $queryState));
-          
+
           foreach ($combinedArray as $key => $value) {
             if (preg_match('/"([^"]+)"/', $value['name'], $n)) {
               $name = $n[1];   
             }
             $status = ((substr($value['state'], -1, 1) == 1) ? 'ON' : ((substr($value['state'], -1, 1) == 2) ? 'OFF' : 'UNKNOWN' ));
-            $index = (substr($value['port'], -1));
+            $index = (substr($value['outlet'], -1));
               $results[] = [
                 "PDU Name"    => $apcPduName,
                 "IP Address"  => $apcPDU['ipAddress'],
-                "Port"        => $index,
+                "Outlet"      => $index,
                 "Name"        => $name,
                 "Status"      => $status,
               ];
@@ -392,9 +637,88 @@ foreach ($apcPDUs as $key => $apcPDU) {
 
       echo'
             <div class="container px-4 pt-3 border rounded bg-light" id="icon-grid">
-              <a href="http://'.$apcPDU['ipAddress'].'" title="'.$apcPduName.'" target="_blank" rel="noopener noreferrer nofollow" class="text-black text-decoration-none">
-                <h2 class="pb-2 border-bottom">'.$apcPduName.'</h2>
-              </a>
+              <div class="container border-bottom border-bottom-dark">
+                <div class="get-quote">
+                  <div class="row">
+
+                    <div class="col-6 d-flex">
+                      <a href="http://'.$apcPDU['ipAddress'].'" title="'.$apcPduName.'" target="_blank" rel="noopener noreferrer nofollow" class="text-black text-decoration-none">
+                        <h2>'.$apcPduName.'</h2>
+                      </a>
+                      <span class="mx-2" data-bs-toggle="modal" data-bs-target="#pduName'.preg_replace('/\\./i', '', $apcPDU['ipAddress']).'" >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-pencil-fill" viewBox="0 0 16 16" data-bs-toggle="tooltip" data-bs-placement="top" title="Rename PDU">
+                          <path d="M12.854.146a.5.5 0 0 0-.707 0L10.5 1.793 14.207 5.5l1.647-1.646a.5.5 0 0 0 0-.708l-3-3zm.646 6.061L9.793 2.5 3.293 9H3.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.207l6.5-6.5zm-7.468 7.468A.5.5 0 0 1 6 13.5V13h-.5a.5.5 0 0 1-.5-.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.5-.5V10h-.5a.499.499 0 0 1-.175-.032l-.179.178a.5.5 0 0 0-.11.168l-2 5a.5.5 0 0 0 .65.65l5-2a.5.5 0 0 0 .168-.11l.178-.178z"/>
+                        </svg>
+                      </span>
+                    </div>
+
+                    <div class="col-6 d-flex flex-row-reverse">
+                      <div class="btn-toolbar pb-2 ps-5" role="toolbar" aria-label="Toolbar with button groups">
+                        <div class="btn-group me-2" role="group" aria-label="First group">
+                          <form action="." method="post">
+                            <button type="submit" class="btn btn-outline-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="Turn ALL outlets ON" name="STATE" value="ON">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-toggle-on" viewBox="0 0 16 16">
+                                <path d="M5 3a5 5 0 0 0 0 10h6a5 5 0 0 0 0-10H5zm6 9a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/>
+                              </svg>
+                            </button>
+                            <input type="hidden" name="OUTLET" value="ALL">
+                            <input type="hidden" name="IP" value="'.$apcPDU['ipAddress'].'">
+                          </form>
+                          <form action="." method="post">
+                            <button type="submit" class="btn btn-outline-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="Turn ALL outlets OFF" name="STATE" value="OFF">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-toggle-off" viewBox="0 0 16 16">
+                                <path d="M11 4a4 4 0 0 1 0 8H8a4.992 4.992 0 0 0 2-4 4.992 4.992 0 0 0-2-4h3zm-6 8a4 4 0 1 1 0-8 4 4 0 0 1 0 8zM0 8a5 5 0 0 0 5 5h6a5 5 0 0 0 0-10H5a5 5 0 0 0-5 5z"/>
+                              </svg>
+                            </button>
+                            <input type="hidden" name="OUTLET" value="ALL">
+                            <input type="hidden" name="IP" value="'.$apcPDU['ipAddress'].'">
+                          </form>
+                          <form action="." method="post">
+                            <button type="submit" class="btn btn-outline-danger" data-bs-toggle="tooltip" data-bs-placement="top" title="REBOOT ALL outlets" name="STATE" value="REBOOT">
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-bootstrap-reboot" viewBox="0 0 16 16">
+                                <path d="M1.161 8a6.84 6.84 0 1 0 6.842-6.84.58.58 0 1 1 0-1.16 8 8 0 1 1-6.556 3.412l-.663-.577a.58.58 0 0 1 .227-.997l2.52-.69a.58.58 0 0 1 .728.633l-.332 2.592a.58.58 0 0 1-.956.364l-.643-.56A6.812 6.812 0 0 0 1.16 8z"/>
+                                <path d="M6.641 11.671V8.843h1.57l1.498 2.828h1.314L9.377 8.665c.897-.3 1.427-1.106 1.427-2.1 0-1.37-.943-2.246-2.456-2.246H5.5v7.352h1.141zm0-3.75V5.277h1.57c.881 0 1.416.499 1.416 1.32 0 .84-.504 1.324-1.386 1.324h-1.6z"/>
+                              </svg>
+                            </button>
+                            <input type="hidden" name="OUTLET" value="ALL">
+                            <input type="hidden" name="IP" value="'.$apcPDU['ipAddress'].'">
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+              </div>
+          
+          
+
+              <!-- Modal -->
+              <div class="modal fade" id="pduName'.preg_replace('/\\./i', '', $apcPDU['ipAddress']).'" tabindex="-1" aria-labelledby="pduName'.preg_replace('/\\./i', '', $apcPDU['ipAddress']).'Label" aria-hidden="true">
+                <div class="modal-dialog modal-dialog-centered">
+                  <div class="modal-content">
+                    <div class="modal-header">
+                      <h5 class="modal-title" id="pduName'.preg_replace('/\\./i', '', $apcPDU['ipAddress']).'Label">Rename PDU</h5>
+                      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <form action="." method="post">
+                      <div class="modal-body">
+                        <div class="mb-3">
+                          <label for="pduInputName" class="form-label">PDU Name</label>
+                          <input type="text" class="form-control" id="pduInputName" name="pduInputName" placeholder="'.$apcPduName.'" aria-describedby="pduName" onkeypress="return /^[\x00-\x7F]*$/i.test(event.key)">
+                          <input type="hidden" name="IP" value="'.$apcPDU['ipAddress'].'">
+                          <div id="pduName'.preg_replace('/\\./i', '', $apcPDU['ipAddress']).'" class="form-text">Only ASCII character set allowed</div>
+                        </div>
+                      </div>
+                      <div class="modal-footer">
+                        <button type="button" class="btn btn-danger" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save</button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              </div>
+              <!-- Modal -->
 
               <div class="row g-4 py-5 row-cols-1 row-cols-md-2 row-cols-lg-4 pb-3">
       ';
@@ -403,21 +727,21 @@ foreach ($apcPDUs as $key => $apcPDU) {
         if ($result['IP Address'] == $apcPDU['ipAddress']) {
           echo'
                   <div class="col d-flex align-items-start">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="1.75em" height="1.75em" fill="currentColor" class="bi bi-outlet text-dark flex-shrink-0 me-3" viewBox="0 0 16 16">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="1.75em" height="1.75em" fill="currentColor" class="bi bi-outlet text-dark flex-shrink-0 me-3" viewBox="0 0 16 16" data-bs-toggle="tooltip" data-bs-placement="top" title="https://'.$_SERVER['SERVER_NAME'].'?IP='.$result['IP Address'].'&OUTLET='.$result['Outlet'].'">
                     <path d="M3.34 2.994c.275-.338.68-.494 1.074-.494h7.172c.393 0 .798.156 1.074.494.578.708 1.84 2.534 1.84 5.006 0 2.472-1.262 4.297-1.84 5.006-.276.338-.68.494-1.074.494H4.414c-.394 0-.799-.156-1.074-.494C2.762 12.297 1.5 10.472 1.5 8c0-2.472 1.262-4.297 1.84-5.006zm1.074.506a.376.376 0 0 0-.299.126C3.599 4.259 2.5 5.863 2.5 8c0 2.137 1.099 3.74 1.615 4.374.06.073.163.126.3.126h7.17c.137 0 .24-.053.3-.126.516-.633 1.615-2.237 1.615-4.374 0-2.137-1.099-3.74-1.615-4.374a.376.376 0 0 0-.3-.126h-7.17z"/>
                     <path d="M6 5.5a.5.5 0 0 1 .5.5v1.5a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm4 0a.5.5 0 0 1 .5.5v1.5a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zM7 10v1h2v-1a1 1 0 0 0-2 0z"/>
                   </svg>
                   <div>
                     <h4 class="fw-bold mb-0 outlet-labels">'.$result['Name'].'</h4>
+                    
 
                   <div class="container">
                     <div class="row">
                       <div class="col">
                         <form action="." method="post">
                           <div class="form-check form-switch form-switch-xl">
-                            <input class="form-check-input" type="checkbox" id="STATE" name="STATE" value="'.$result['Status'].'" onChange="this.form.submit()"  '.(($result['Status'] == "ON") ? ' checked' : '').'>
-                            <input type="hidden" name="STATE" value="'.$result['Status'].'">
-                            <input type="hidden" name="PORT" value="'.$result['Port'].'">
+                            <input class="form-check-input" type="checkbox" id="STATE" name="STATE" value="TOGGLE" onChange="this.form.submit()"  '.(($result['Status'] == "ON") ? ' checked' : '').'>
+                            <input type="hidden" name="OUTLET" value="'.$result['Outlet'].'">
                             <input type="hidden" name="IP" value="'.$result['IP Address'].'">
                           </div>
                         </form>
@@ -432,7 +756,7 @@ foreach ($apcPDUs as $key => $apcPDU) {
                                 <path d="M8 4.466V.534a.25.25 0 0 1 .41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 0 1 8 4.466z"/>
                               </svg>
                             </button>
-                            <input type="hidden" name="PORT" value="'.$result['Port'].'">
+                            <input type="hidden" name="OUTLET" value="'.$result['Outlet'].'">
                             <input type="hidden" name="IP" value="'.$result['IP Address'].'">
                           </div>
                         </form>
@@ -474,7 +798,6 @@ else {
 
 ?>
 
-
   </main>
   <footer class="pt-2 my-1 text-muted border-top">
     &copy; <?= ((date("Y") == 2021) ? date("Y") . ' ' : '2021-' . date("Y") . ' ') ?>
@@ -486,6 +809,15 @@ else {
     | APC Switched Rack PDU Control Panel
   </footer>
 </div>
+
+  <?php scriptSource() ?>
+
+  <script>
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'))
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+      return new bootstrap.Tooltip(tooltipTriggerEl)
+    })
+  </script>
 
   </body>
 </html>
