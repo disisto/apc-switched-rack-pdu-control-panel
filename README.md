@@ -2,6 +2,7 @@
 A PHP based Control Panel to control multiple APC Switched Rack PDUs via SNMPv3. A single panel to switch (on, off, restart) the attached devices between different states.
 
 <img src="https://github.com/disisto/apc-switched-rack-pdu-control-panel/raw/main/img/0_apc_pdu_control_panel.gif">
+(Dark/Light Mode based on User System Settings)
 
 ---
 
@@ -34,6 +35,7 @@ A PHP based Control Panel to control multiple APC Switched Rack PDUs via SNMPv3.
 + PHP module: `php-snmp`
 + APC Switched Rack PDU(s) with enabled SNMPv3 
   * Tested with APC Switched Rack PDU <a href="https://www.apc.com/shop/my/en/products/Rack-PDU-Switched-1U-12A-208V-10A-230V-8-C13/P-AP7920">AP7920</a> and <a href="https://www.apc.com/shop/my/en/products/Rack-PDU-Switched-1U-12A-208V-10A-230V-8-C13/P-AP7921">AP7921</a> on EOL firmware `v3.9.2`
+  * Tested with APC Switched Rack PDU <a href="https://www.apc.com/shop/my/en/products/Rack-PDU-Switched-1U-12A-208V-10A-230V-8-C13/P-AP7920B">AP7920B</a> on latest firmware `v6.5.6`
 
 ---
 
