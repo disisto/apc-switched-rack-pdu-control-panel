@@ -2,7 +2,6 @@
 A PHP based Control Panel to control multiple APC Switched Rack PDUs via SNMPv3. A single panel to switch (on, off, restart) the attached devices between different states.
 
 <img src="https://github.com/disisto/apc-switched-rack-pdu-control-panel/raw/main/img/0_apc_pdu_control_panel.gif">
-(Dark/Light Mode based on User System Settings)
 
 ---
 
@@ -40,7 +39,7 @@ A PHP based Control Panel to control multiple APC Switched Rack PDUs via SNMPv3.
 ---
 
 ## Quick Install
-No&nbsp;🚀 &nbsp;science: Upload a single PHP file on a Webserver, enter the PDU IP address and the SNMPv3 access data with an editor and the script is ready for use.
+No&nbsp;🚀&nbsp;science: Upload a single PHP file on a Webserver, enter the PDU IP address and the SNMPv3 access data with an editor and the script is ready for use.
 
 ---
 This project is not affiliated with <a href="https://www.apc.com/">APC by Schneider Electric</a>.<br>
