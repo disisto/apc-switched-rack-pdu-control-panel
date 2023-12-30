@@ -3,5 +3,7 @@ version: '3.9'
 services:
   web:
     build: "./"
+    volumes:
+      - ./config.php:/var/www/html/config.php
     ports:
       - '8080:80'
