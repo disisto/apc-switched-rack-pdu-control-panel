@@ -46,13 +46,15 @@ Make sure you have [Docker Engine installed](https://docs.docker.com/engine/inst
 ```shell
 git clone https://github.com/disisto/apc-switched-rack-pdu-control-panel.git
 cd apc-switched-rack-pdu-control-panel
+cp config.example.php config.php
+# Update `config.php` with appropriate values for your PDU(s)
 docker compose up -d
 ```
 
 Browse to http://localhost:8080, and the control panel should be displayed.
 
 ## Quick Install
-No&nbsp;🚀&nbsp;science: Upload a single PHP file on a Webserver, enter the PDU IP address and the SNMPv3 access data with an editor and the script is ready for use.
+No&nbsp;🚀&nbsp;science: Upload two PHP files on a Webserver. Enter the PDU IP address and the SNMPv3 access data with an editor in `config.php`, and the script is ready for use.
 
 ---
 This project is not affiliated with <a href="https://www.apc.com/">APC by Schneider Electric</a>.<br>
