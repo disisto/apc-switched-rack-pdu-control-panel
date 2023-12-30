@@ -32,51 +32,33 @@
 *    SOFTWARE.
 **/
 
+#############################################################
+### No editing is needed in this file, only in config.php ###
+#############################################################
 
-
-
-####  Set your personal APC PDU settings
+####  Load APC PDU settings from config file
 
 $apcPDUs = [];
+$configFound = true;
+$configFileValid = true;
 
-$apcPDUs['001'] = createPDUCfg(
-  false,                           // Toggle Switch             :: Switch on (true) or switch off (false) to stop monitoring the PDU.
-  '',                             // IP address                :: Enter the IP address of the PDU
-  '',                             // User Name                 :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> User Name | NOTE: The SNMP user name can contain up to 32 characters in length and include any combination of alphanumeric characters (uppercase letters, lowercase letters, and numbers). ⚠️  Spaces not allowed.
-  '',                             // Authentication Passphrase :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Authentication Passphrase | NOTE: The password must be 15-32 ASCII characters long. ⚠️ Special characters not allowed.
-  '',                             // Authentication Protocol   :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Authentication Protocol
-  '',                             // Privacy Passphrase        :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Privacy Passphrase | NOTE: The password must be 15-32 ASCII characters long. ⚠️ Special characters not allowed.
-  '',                             // Privacy Protocol          :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Privacy Protocol
-  ''                              // Security Level            :: Set desired security level: noAuthNoPriv | authNoPriv | authPriv | More detail: https://www.php.net/manual/en/function.snmp3-get.php
-);
-
-$apcPDUs['002'] = createPDUCfg(
-  false,                           // Toggle Switch             :: Switch on (true) or switch off (false) to stop monitoring the PDU.
-  '',                             // IP address                :: Enter the IP address of the PDU
-  '',                             // User Name                 :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> User Name | NOTE: The SNMP user name can contain up to 32 characters in length and include any combination of alphanumeric characters (uppercase letters, lowercase letters, and numbers). ⚠️  Spaces not allowed.
-  '',                             // Authentication Passphrase :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Authentication Passphrase | NOTE: The password must be 15-32 ASCII characters long. ⚠️ Special characters not allowed.
-  '',                             // Authentication Protocol   :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Authentication Protocol
-  '',                             // Privacy Passphrase        :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Privacy Passphrase | NOTE: The password must be 15-32 ASCII characters long. ⚠️ Special characters not allowed.
-  '',                             // Privacy Protocol          :: Administration -> Network -> SNMPv3: user profiles -> choose profile from list -> Privacy Protocol
-  ''                              // Security Level            :: Set desired security level: noAuthNoPriv | authNoPriv | authPriv | More detail: https://www.php.net/manual/en/function.snmp3-get.php
-);
-
-function createPDUCfg($active, $ipAddress, $userProfile, $authPassphrase, $authProtocol, $privacyPassphrase, $privacyProtocol, $securityLevel) {
-    return [
-        'active'                    => $active,
-        'ipAddress'                 => $ipAddress,
-        'userProfile'               => $userProfile,
-        'authenticationPassphrase'  => $authPassphrase,
-        'authenticationProtocol'    => $authProtocol,
-        'privacyPassphrase'         => $privacyPassphrase,
-        'privacyProtocol'           => $privacyProtocol,
-        'securityLevel'             => $securityLevel,
-    ];
+if (validate_config_file(__DIR__ . '/../config.php')) {
+    # Look for the config file in a sub-directory by default (for security, it shouldn't be in the web root)
+    $apcPDUs = (require __DIR__ . '/../config.php');
+} elseif (validate_config_file(__DIR__ . '/config.php')) {
+    # Fallback to the config file in the same directory
+    $apcPDUs = (require __DIR__ . '/config.php');
+} else {
+    # No configuration file found, or file found but invalid (not an array)
+    $configFound = false;
 }
 
-####################################################
-### No further editing is needed below this line ###
-####################################################
+function validate_config_file($filePath) {
+    return (
+            file_exists($filePath) &&
+            is_array((require $filePath))
+    );
+}
 
 #### OID records
 ## http://oidref.com/1.3.6.1.4.1.318.1.1.12
@@ -258,8 +240,12 @@ function errorMsg($errorType, $erroMsgString, $affectedPDU) {
   $errorMsg['en']['invalidIP']['footer']      = 'Set a valid IP address to establish a connection.';
   
   $errorMsg['en']['configuration']['head']    = 'Configuration error';
-  $errorMsg['en']['configuration']['body']    = '<p>All PDUs has been set to \'false\' in the PHP file, which prevent to show any results. Check entries on line 43, 54, etc.</p>';
+  $errorMsg['en']['configuration']['body']    = '<p>All PDUs have been set to \'false\' in the config.php file, which prevents showing any results. Check entries on line 4, 14, etc.</p>';
   $errorMsg['en']['configuration']['footer']  = 'Set at least one entry to \'true\' in order to get any results.';
+
+  $errorMsg['en']['configuration_file']['head']    = 'Configuration file error';
+  $errorMsg['en']['configuration_file']['body']    = '<p>Either no configuration file (\'config.php\') was found, or the file was found but is invalid. </p>';
+  $errorMsg['en']['configuration_file']['footer']  = 'Make sure the file exists, and matches the syntax in \'config.example.php\'.';
 
   $errorMsg['en']['noASCII']['head']          = 'Unsupported characters';
   $errorMsg['en']['noASCII']['body']          = '<p>Unsupported characters were used to rename the PDU. Only <a href="https://en.wikipedia.org/wiki/ASCII" title="Wikipedia" target="_blank" rel="noopener noreferrer nofollow" class="text-decoration-none">ASCII characters</a> are allowed.</p>';
@@ -787,7 +773,11 @@ foreach ($apcPDUs as $key => $apcPDU) {
 }
 
 ##### Error handling, if all PDUs are deactivated (all are set to false)
-if ($alltrue) {
+if (!$configFound) {
+    # No configuration file found
+    errorMsg('configuration_file', null, null);
+}
+elseif ($alltrue) {
   // All elements are true
   # echo 'All elements are true';
 }
