@@ -631,7 +631,7 @@ foreach ($apcPDUs as $key => $apcPDU) {
               $name = $n[1];   
             }
             $status = ((substr($value['state'], -1, 1) == 1) ? 'ON' : ((substr($value['state'], -1, 1) == 2) ? 'OFF' : 'UNKNOWN' ));
-            $index = (substr($value['outlet'], -1));
+            $index = (substr($value['outlet'], -2));
               $results[] = [
                 "PDU Name"    => $apcPduName,
                 "IP Address"  => $apcPDU['ipAddress'],
