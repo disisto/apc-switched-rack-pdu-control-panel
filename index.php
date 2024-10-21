@@ -2,7 +2,7 @@
 
 /**
 *    APC Switched Rack PDU Control Panel
-*    Version 1.3
+*    Version 1.4
 *
 *    A PHP based Control panel to control multiple APC Switched Rack PDUs via SNMPv3. A single panel to switch (on, off, restart) the attached devices between different states.
 *
@@ -11,7 +11,7 @@
 *
 *    Licensed under MIT (https://github.com/disisto/apc-switched-rack-pdu-control-panel/blob/main/LICENSE)
 *
-*    Copyright (c) 2021-2023 Roberto Di Sisto
+*    Copyright (c) 2021-2024 Roberto Di Sisto
 *
 *    Permission is hereby granted, free of charge, to any person obtaining a copy
 *    of this software and associated documentation files (the "Software"), to deal
@@ -314,10 +314,10 @@ function stylesheetSource($stylesheetFiles) {
 
 $stylesheetFiles = array(
   array(
-      'file'  => 'assets/vendor/bootstrap/5.3.1/css/bootstrap.min.css',
+      'file'  => 'assets/vendor/bootstrap/5.3.3/css/bootstrap.min.css',
       'cloud' => array(
-          'url'         => 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/css/bootstrap.min.css',
-          'integrity'   => 'sha384-4bw+/aepP/YC94hEpVNVgiZdgIC5+VKNBQNGCHeKRQN+PtmoHDEXuppvnDJzQIu9',
+          'url'         => 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css',
+          'integrity'   => 'sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH',
           'crossorigin' => 'anonymous'
       )
   )
@@ -351,10 +351,10 @@ function scriptSource($scriptFiles) {
 
 $scriptFiles = array(
   array(
-      'file'  => 'assets/vendor/bootstrap/5.3.1/js/bootstrap.bundle.min.js',
+      'file'  => 'assets/vendor/bootstrap/5.3.3/js/bootstrap.bundle.min.js',
       'cloud' => array(
-          'url'         => 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.1/dist/js/bootstrap.bundle.min.js',
-          'integrity'   => 'sha384-HwwvtgBNo3bZJJLYd8oVXjrBZt8cqVSpeBNS5n7C8IVInixGAoxmnlMuBnhbgrkm',
+          'url'         => 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js',
+          'integrity'   => 'sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz',
           'crossorigin' => 'anonymous'
       )
   ),
@@ -631,7 +631,7 @@ foreach ($apcPDUs as $key => $apcPDU) {
               $name = $n[1];   
             }
             $status = ((substr($value['state'], -1, 1) == 1) ? 'ON' : ((substr($value['state'], -1, 1) == 2) ? 'OFF' : 'UNKNOWN' ));
-            $index = (substr($value['outlet'], -1));
+            $index = trim(substr($value['outlet'], -2));
               $results[] = [
                 "PDU Name"    => $apcPduName,
                 "IP Address"  => $apcPDU['ipAddress'],
